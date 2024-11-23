@@ -1,3 +1,4 @@
 # WaterSip-DF
-Dynamic filtering (DF) for precipitation/evaporation particles in moisture source-receptor diagnosis (WaterSip)
+This is the source codes of dynamic filtering (DF) for precipitation/evaporation particles in moisture source-receptor diagnosis (WaterSip).
+The "main_functions" include all the functions we have defined in this project, STEP 1 to 7 are the workflow to run WaterSip, WaterSip-DF, or WaterSip-DF-HAMSTER.
 ![image](https://github.com/user-attachments/assets/392b1629-2d3f-4752-b3b9-40cafbd1662f)
