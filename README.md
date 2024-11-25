@@ -3,6 +3,7 @@ This is the source codes of dynamic filtering (DF) for precipitation/evaporation
 The "main_functions" include all the functions we have defined in this project.
 STEP 1 to 7 are the scripts to run WaterSip, WaterSip-DF, or WaterSip-DF-HAMSTER.
 The "Figure scripts" include some reference plotting codes.
+The YRB folder contains the shapefiles (.shp) for the case study in the Yangtze River Basin.
 
 ![image](https://github.com/user-attachments/assets/392b1629-2d3f-4752-b3b9-40cafbd1662f)
 
