@@ -11,4 +11,4 @@ Following the workflow displayed in the above figure, to run WaterSip, we excute
 To run WaterSip-DF, we excute STEP 1 to 4.
 To run WaterSip-DF-HAMSTER, we excute STEP 1 to 7.
 
-Before utilizing these scripts, please re-configure the "settings" part according to the actual parameters and file locations.
+Before utilizing these scripts, please re-configure the "settings" part in each script according to your actual parameters and file locations.
