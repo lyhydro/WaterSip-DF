@@ -39,15 +39,47 @@ def readpartposit(file, nspec=1):
     output['xlon'] = data_as_float[2, :] # position coordinates
     output['ylat'] = data_as_float[3, :] # position coordinates
     output['ztra'] = data_as_float[4, :] # position coordinates
-    output['itramem'] = data_as_int[5, :] # relase times of each particle
-    output['topo'] = data_as_float[6, :] # Topography heigth in m
-    output['pvi'] = data_as_float[7, :] # Potential vorticity
+    #output['itramem'] = data_as_int[5, :] # relase times of each particle
+    #output['topo'] = data_as_float[6, :] # Topography heigth in m
+    #output['pvi'] = data_as_float[7, :] # Potential vorticity
     output['qvi'] = data_as_float[8, :] # Specific humidity, kg/kg
     output['rhoi'] = data_as_float[9, :] # Air density, kg/m*3
-    output['hmixi'] = data_as_float[10, :] # 'PBL' heigth in m (above ground surface)
-    output['tri'] = data_as_float[11, :] # Tropopause heigth in m
+    output['hmixi'] = data_as_float[10, :] # 'BLH' heigth in m (above ground surface)
+    #output['tri'] = data_as_float[11, :] # Tropopause heigth in m
     output['tti'] = data_as_float[12, :] # Temperature in K   
     output['xmass'] = np.squeeze( data_as_float[13:13+nspec, :] ) # particle masses
+    return output
+    
+#%%
+def readpartposit_to_df(file, variables=None):
+    # 变量映射关系
+    variable_map = {
+        'lon': 2,
+        'lat': 3,
+        'z': 4,
+        'q': 8,
+        'dens': 9,
+        'blh': 10,
+        't': 12,
+        'mass': 13 
+    }
+    # 打开文件并读取数据
+    with open(file, 'rb') as f:
+        nbytes = os.fstat(f.fileno()).st_size
+        numpart = round((nbytes / 4 + 3) / 15 - 1)
+        f.read(4 * 3)  # 跳过文件头
+        data_as_int = np.fromfile(f, dtype=np.int32, count=numpart * 15).reshape(-1, 15).T        
+        f.seek(4 * 3)  # 重置文件位置
+        data_as_float = np.fromfile(f, dtype=np.float32, count=numpart * 15).reshape(-1, 15).T
+    # 默认输出所有变量
+    if variables is None:
+        variables = list(variable_map.keys())    
+    # 构建输出 DataFrame
+    output_data = {}
+    for var in variables:
+        if var in variable_map:
+            output_data[var] = data_as_float[variable_map[var], :]
+    output = pd.DataFrame(output_data, index=data_as_int[1, :])  # 设置索引为点 ID
     return output
 
 #%%
@@ -85,7 +117,7 @@ def calculate_RH(df, RH_name='RH', dens='dens', q='q', t='t'):
     # qs = 0.622*es/(p-0.378*es)
     # df['RH_new'] = 100*df['q']/qs
     df[RH_name] =  26.3*p*df[q] / np.exp((17.67*(df[t]-273.16))/(df[t]-29.65)) #https://earthscience.stackexchange.com/questions/2360/how-do-i-convert-specific-humidity-to-relative-humidity
-    return df
+
 
 #%%
 def midpoint(lat1, lon1, lat2, lon2):
