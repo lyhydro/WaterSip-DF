@@ -26,22 +26,22 @@ watersip:
 warerSip-HAMSTER:
     observation_path: '.\P_E_observation'
     P_E_simulation_output_path: '.\P_E_simulation'
-    #kg/kg (以前的default_q_diff_p改名成这个)
+    #kg/kg 
     q_diff_p: -0.0002
-    #kg/kg (以前的default_q_diff_e改名成这个)
+    #kg/kg 
     q_diff_e: 0.0002
-    #%, RH (以前的default_rh_threshold改名成这个)
+    #%, RH 
     rh_threshold: 80
-    #BLH scailing factor  (以前的default_ blh_factor改名成这个)
+    #BLH scailing factor 
     blh_factor: 1.5
 
 #WarerSip-DF (include STEP 1, 2, 3, 4)
 warerSip-DF:
     observation_path: '.\P_E_observation'
     DF_file_path: '.\DF'
-    #used for select all potential E particles (以前的q_diff_e_simulation改名成这个)
+    #used for select all potential E particles
     q_diff_e_df: 0.0000
-    #used for select all potential P particles (以前的q_diff_p_simulation改名成这个)
+    #used for select all potential P particles 
     q_diff_p_df: -0.0000
 
 # WarerSip-DF-HAMSTER (include STEP 1, 2, 3, 4, 5, 6, 7)
@@ -49,8 +49,8 @@ warerSip-DF-HAMSTER:
     observation_path: '.\P_E_observation'
     DF_file_path: '.\DF'
     P_E_simulation_output_path: '.\P_E_simulation'
-    #used for select all potential E particles (以前的 q_diff_e和 q_diff_e_simulation改名成这个，这两个参数是一个东西)
+    #used for select all potential E particles 
     q_diff_e_df: 0.0000
-    #used for select all potential P particles (以前的 q_diff_p和 q_diff_p_simulation改名成这个，这两个参数是一个东西)
+    #used for select all potential P particles 
     q_diff_p_df: -0.0000
 
