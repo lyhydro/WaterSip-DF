@@ -11,20 +11,20 @@ from YAMLConfig import YAMLConfig
 def dynamic_rh_thresholds_calculation():
     print('begin step 1:dynamic RH thresholds calculation !')
     config = YAMLConfig('config.yaml')
-    general_config = config.get('general')
+    general_config = config.get('General')
     time_span = general_config['time_span']
     start_time = str(general_config['start_time'])
     end_time = str(general_config['end_time'])
 
     output_spatial_resolution = general_config['output_spatial_resolution']
 
-    warerSip_HAMSTER_config = config.get('warerSip-HAMSTER')
+    warerSip_HAMSTER_config = config.get('WaterSip-HAMSTER')
     # threshold used to extract all potential E particles
     q_diff_p = warerSip_HAMSTER_config['q_diff_p']
 
     partposit_path = general_config['partposit_path']
     observation_path = warerSip_HAMSTER_config['observation_path']
-    DF_file_path = config.get('warerSip-DF')['DF_file_path']
+    DF_file_path = config.get('WaterSip-DF')['DF_file_path']
 
     time = pd.date_range(start=pd.to_datetime(start_time, format='%Y%m%d%H'),
                          end=pd.to_datetime(end_time, format='%Y%m%d%H'), freq='{}H'.format(time_span))[:-1]
