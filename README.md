@@ -15,13 +15,13 @@ cd WaterSip-DF
 pip install -r requirements.txt
 ```
 
+#### Configuration
+Refer to and modify the **config.yaml** file.
+
 #### Required data
 1. Place the "partposit*" files (FLEXPART output under domain-filling mode) into the **partposit_file** folder.
 2. Place the monthly "actual" precipitation/evaporation files (.nc format, e.g. ERA5 hourly data) into the **P_E_observation** folder.
 3. Place the shapefile (shp) of the target area into the **shp** folder.
-
-#### Configuration parameters
-Please refer to and modify the **config.yaml** file.
 
 #### Run the methods
 ```shell
