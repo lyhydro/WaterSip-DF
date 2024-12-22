@@ -6,39 +6,26 @@ This package consists of seven core scripts (Step 1–7), and their logic and in
 
 
 #### Installation
-
 To install **WaterSip-DF**, do the following:
-
 1. Clone the repository
-
-   ```shell
-   git clone https://github.com/lyhydro/WaterSip-DF
-   cd WaterSip-DF
-   ```
-
+```shell
+git clone https://github.com/lyhydro/WaterSip-DF
+cd WaterSip-DF
+```
 2. Make an environment with the necessary python packages
-
-   ```shell
-   pip install -r requirements.txt
-   ```
-
+```shell
+pip install -r requirements.txt
+```
 
 #### Required data
-
 1. Place the "partposit*" files (FLEXPART output under domain-filling mode) into the **partposit_file** folder.
-
 2. Place the monthly "actual" precipitation/evaporation files (.nc format, e.g. ERA5 hourly data) into the **P_E_observation** folder.
-
 3. Place the shapefile (shp) of the target area into the **shp** folder.
 
-
 #### Configuration parameters
-
 Please refer to and modify the **config.yaml** file.
 
-
-## Run the methods
-
+### Run the methods
 ```shell
 # WaterSip
 python main.py watersip
