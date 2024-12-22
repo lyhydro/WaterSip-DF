@@ -14,25 +14,25 @@ def filtering_and_tracking(df_method):
     begin_time = time.time()
     print('begin step 3:filtering process !')
     config = YAMLConfig('config.yaml')
-    general_config = config.get('general')
+    general_config = config.get('General')
     tracking_days = general_config['tracking_days']
     time_span = general_config['time_span']
     output_spatial_resolution = general_config['output_spatial_resolution']
     start_time = str(general_config['start_time'])
     end_time = str(general_config['end_time'])
 
-    warerSip_HAMSTER_config = config.get('warerSip-HAMSTER')
+    warerSip_HAMSTER_config = config.get('WaterSip-HAMSTER')
     q_diff_p = warerSip_HAMSTER_config['q_diff_p']
     q_diff_e = warerSip_HAMSTER_config['q_diff_e']
 
-    watersip_config = config.get('watersip')
+    watersip_config = config.get('WaterSip')
     default_q_diff_p = watersip_config['default_q_diff_p']
     default_q_diff_e = watersip_config['default_q_diff_e']
     default_rh_threshold = watersip_config['default_rh_threshold']
     default_blh_factor = watersip_config['default_blh_factor']
 
     partposit_path = general_config['partposit_path']
-    DF_file_path = config.get('warerSip-DF')['DF_file_path']
+    DF_file_path = config.get('WaterSip-DF')['DF_file_path']
     target_region = general_config['target_region']
     temporary_file_path = general_config['temporary_file_path']
 

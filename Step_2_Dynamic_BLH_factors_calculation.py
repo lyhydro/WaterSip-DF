@@ -11,19 +11,19 @@ from YAMLConfig import YAMLConfig
 def dynamic_blh_factors_calculation():
     print('begin step 2:dynamic BLH factors calculation !')
     config = YAMLConfig('config.yaml')
-    general_config = config.get('general')
+    general_config = config.get('General')
     tracking_days = general_config['tracking_days']
     time_span = general_config['time_span']
     output_spatial_resolution = general_config['output_spatial_resolution']
     start_time = str(general_config['start_time'])
     end_time = str(general_config['end_time'])
 
-    warerSip_HAMSTER_config = config.get('warerSip-HAMSTER')
+    warerSip_HAMSTER_config = config.get('WaterSip-HAMSTER')
     q_diff_e = warerSip_HAMSTER_config['q_diff_e']
 
     partposit_path = general_config['partposit_path']
     observation_path = warerSip_HAMSTER_config['observation_path']
-    DF_file_path = config.get('warerSip-DF')['DF_file_path']
+    DF_file_path = config.get('WaterSip-DF')['DF_file_path']
 
     time = pd.date_range(start=pd.to_datetime(start_time, format='%Y%m%d%H') - pd.Timedelta(days=tracking_days)
                          , end=pd.to_datetime(end_time, format='%Y%m%d%H'), freq='{}H'.format(time_span))[:-1]

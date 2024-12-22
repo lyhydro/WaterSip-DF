@@ -9,26 +9,22 @@ from YAMLConfig import YAMLConfig
 # %% * * * * * * * * * * MAIN * * * * * * * * * *
 def e_simulation(df_method):
     config = YAMLConfig('config.yaml')
-    general_config = config.get('general')
+    general_config = config.get('General')
+    partposit_path = general_config['partposit_path']
     tracking_days = general_config['tracking_days']
     time_span = general_config['time_span']
-    # hours, time-step of partposit files
-    q_diff_e_simulation = general_config['q_diff_e_simulation']  # kg/kg
     output_spatial_resolution = general_config['output_spatial_resolution']
     start_time = str(general_config['start_time'])
     end_time = str(general_config['end_time'])
 
-    warerSip_HAMSTER_config = config.get('warerSip-HAMSTER')
+    warerSip_HAMSTER_config = config.get('WaterSip-HAMSTER')
+    q_diff_p = warerSip_HAMSTER_config['q_diff_p']
     q_diff_e = warerSip_HAMSTER_config['q_diff_e']
-
-    watersip_config = config.get('watersip')
-    default_q_diff_e = watersip_config['default_q_diff_e']
-    default_blh_factor = watersip_config['default_blh_factor']
-
-    partposit_path = general_config['partposit_path']
-    DF_file_path = config.get('warerSip-DF-HAMSTER')['DF_file_path']
-    P_E_simulation_output_path = config.get('warerSip-DF-HAMSTER')['P_E_simulation_output_path']
-
+    rh_threshold = warerSip_HAMSTER_config['rh_threshold']
+    blh_factor = warerSip_HAMSTER_config['blh_factor']
+    P_E_simulation_output_path = warerSip_HAMSTER_config['P_E_simulation_output_path']
+    
+    DF_file_path = config.get('WaterSip-DF-HAMSTER')['DF_file_path']
 
     files0 = back_tracking_files(partposit_path, start_time, tracking_days, time_span)
     files = get_files(partposit_path, start_time, end_time, time_span)
@@ -49,7 +45,7 @@ def e_simulation(df_method):
         # q_diff threshold filter
         df_e['q_diff'] = df_e['q'] - df_e['q0']
         df_e = df_e.drop(columns=['q', 'q0'])
-        df_e = df_e[df_e['q_diff'] > q_diff_e_simulation]  # 比湿变化阈值筛选
+        df_e = df_e[df_e['q_diff'] > 0]  # 比湿变化阈值筛选
         # 计算经纬度中间值
         df_e['lat'], df_e['lon'] = midpoint(df_e['lat'].values, df_e['lon'].values, df_e['lat0'].values,
                                             df_e['lon0'].values)
@@ -77,8 +73,8 @@ def e_simulation(df_method):
             # df_p = df_p[df_p['RH_threshold'] != 100]
             df_e = df_e[df_e['z'] <= df_e['blh'] * df_e['BLH_factor']]
         else:
-            df_e = df_e[df_e['q_diff'] > default_q_diff_e]
-            df_e = df_e[df_e['z'] <= df_e['blh'] * default_blh_factor]
+            df_e = df_e[df_e['q_diff'] > q_diff_e]
+            df_e = df_e[df_e['z'] <= df_e['blh'] * blh_factor]
         # 计算筛选粒子产生的蒸发
         df_e['e_mass'] = df_e['mass'] * df_e['q_diff']  # kg
         # 按格点统计并累加e

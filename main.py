@@ -16,4 +16,4 @@ if __name__ == "__main__":
     elif len(sys.argv) > 1 and sys.argv[1] == 'watersip-df-hamster':
         main_watersip_df_hamster()
     else:
-        main_watersip()
+        print('Check your command')

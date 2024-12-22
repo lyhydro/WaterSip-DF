@@ -10,6 +10,7 @@ import argparse
 from datetime import datetime, timedelta
 import geopandas as gpd
 from shapely.geometry import Point, shape
+from YAMLConfig import YAMLConfig
 
 
 # %% * * * * * * * * * * * * FLEXPART output to E/P simulation functions * * * * * * * * * * * *
@@ -208,18 +209,20 @@ def from_shp_get_parts(df, shp_file):
     # 先将df按矩形框筛选一遍，减少后期计算量
     shp_bounds = gdf_shp.total_bounds
     df = df[(df['lon'] >= shp_bounds[0]) & (df['lon'] <= shp_bounds[2]) & (df['lat'] >= shp_bounds[1]) & (
-                df['lat'] <= shp_bounds[3])]
+            df['lat'] <= shp_bounds[3])]
     points = [Point(lon, lat) for lon, lat in zip(df['lon'], df['lat'])]
     gdf_points = gpd.GeoDataFrame(geometry=points, index=df.index, crs=gdf_shp.crs)
     points_within_shp = gpd.sjoin(gdf_points, gdf_shp, predicate='within')
     return df.loc[
         points_within_shp.index]  # .loc是基于标签索引，.iloc是基于位置索引，两者都可以基于索引号df.loc[df.index=='']，df.iloc[df.index.get_loc('')]
 
+
 # %%
 def from_bounds_get_parts(df, lat_up, lat_down, lon_left, lon_right):
     df_filtered = df[(df['lat'] >= lat_down) & (df['lat'] <= lat_up) &
-        (df['lon'] >= lon_left) & (df['lon'] <= lon_right)]
+                     (df['lon'] >= lon_left) & (df['lon'] <= lon_right)]
     return df_filtered
+
 
 # %%
 def back_tracking_files(flexpart_output_file, start_time, tracking_days, time_span):
@@ -258,12 +261,14 @@ def from_shp_get_mask(shp, latitude, longitude):
                 mask[i, j] = 1  # 在shp范围内的点赋值为1
     return mask
 
+
 # %%
 def from_bounds_get_mask(lat_up, lat_down, lon_left, lon_right, latitude, longitude):
     lon_grid, lat_grid = np.meshgrid(longitude, latitude)
     mask = ((lat_grid >= lat_down) & (lat_grid <= lat_up) &
             (lon_grid >= lon_left) & (lon_grid <= lon_right)).astype(int)
     return mask
+
 
 # %%
 def get_df_BLH_factor(DF_file_path, start_time, tracking_days, direction='backward'):
@@ -282,6 +287,83 @@ def get_df_BLH_factor(DF_file_path, start_time, tracking_days, direction='backwa
         df0 = df0.assign(time=pd.to_datetime(f[-13:-3], format='%Y%m%d%H'))
         df.append(df0)
     return pd.concat(df, ignore_index=True)
+
+
+# 检查文件是否存在
+def check_file(file_path):
+    return os.path.exists(file_path)
+
+
+def gen_df_rh_or_p_simulation_files():
+    config = YAMLConfig('config.yaml')
+    general_config = config.get('General')
+    time_span = general_config['time_span']
+    start_time = str(general_config['start_time'])
+    end_time = str(general_config['end_time'])
+
+    DF_file_path = config.get('WaterSip-DF')['DF_file_path']
+
+    time = pd.date_range(start=pd.to_datetime(start_time, format='%Y%m%d%H'),
+                         end=pd.to_datetime(end_time, format='%Y%m%d%H'), freq='{}H'.format(time_span))[:-1]
+    files = [os.path.join(DF_file_path, f"DF_RH_thresholds_{time.strftime('%Y%m%d%H')}.nc") for time in time]
+    return files
+
+
+def gen_df_blh_or_e_simulation_files(file_path, prefix):
+    config = YAMLConfig('config.yaml')
+    general_config = config.get('General')
+    tracking_days = general_config['tracking_days']
+    time_span = general_config['time_span']
+    start_time = str(general_config['start_time'])
+    end_time = str(general_config['end_time'])
+
+    time = pd.date_range(start=pd.to_datetime(start_time, format='%Y%m%d%H') - pd.Timedelta(days=tracking_days)
+                         , end=pd.to_datetime(end_time, format='%Y%m%d%H'), freq='{}H'.format(time_span))[:-1]
+    files = [os.path.join(file_path, f"{prefix}_{time.strftime('%Y%m%d%H')}.nc") for time in time]
+
+    return files
+
+
+# 检查DF文件夹是否有相应时刻的文件，有则返回True， 无则返回False
+def check_df_file():
+    config = YAMLConfig('config.yaml')
+    DF_file_path = config.get('WaterSip-DF')['DF_file_path']
+    # DF_BLH***文件时间段需要包含start time + end time + 整个tracking days的时间段
+    blh_files = gen_df_blh_or_e_simulation_files(DF_file_path, "DF_BLH_factors")
+    for file_path in blh_files:
+        if not os.path.exists(file_path):
+            print(f"{file_path} not exist!")
+            return False
+            break
+    # DF_RH***文件只需要包含start time 到 end time之间即可
+    rh_files = gen_df_rh_or_p_simulation_files()
+    for file_path in rh_files:
+        if not os.path.exists(file_path):
+            print(f"{file_path} not exist!")
+            return False
+            break
+    return True
+
+
+# 检查P_E_simulation文件夹是否有相应时刻的文件，有则返回True，无则返回False
+def check_p_e_simulation():
+    config = YAMLConfig('config.yaml')
+    file_path = config.get('WaterSip-HAMSTER')['P_E_simulation_output_path']
+
+    e_simulation_files = gen_df_blh_or_e_simulation_files(file_path, "E_simulation_mm")
+    for file_path in e_simulation_files:
+        if not os.path.exists(file_path):
+            print(f"{file_path} not exist!")
+            return False
+            break
+        
+    p_simulation_files = gen_df_rh_or_p_simulation_files()
+    for file_path in p_simulation_files:
+        if not os.path.exists(file_path):
+            print(f"{file_path} not exist!")
+            return False
+            break
+    return True
 
 
 def read_cmdargs():
@@ -317,3 +399,8 @@ def read_cmdargs():
     )
     args = parser.parse_args()  # namespace
     return args
+
+
+if __name__ == "__main__":
+    result = check_p_e_simulation()
+    print(result)

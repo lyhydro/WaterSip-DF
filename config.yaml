@@ -1,8 +1,9 @@
-general:
+General:
     partposit_path: '.\partposit_file'
     temporary_file_path: '.\temporary'
     final_output_path: '.\output'
-    target_region: [35, 25, 110, 130]   # '.\shp\boundary.shp' or [lat_up, lat_down, lon_left, lon_right]
+    # '.\shp\boundary.shp' or [lat_up, lat_down, lon_left, lon_right]
+    target_region: [41, 39, 119, 121]
     start_time: 2023073100
     end_time: 2023080100
     tracking_days: 3
@@ -12,7 +13,7 @@ general:
     output_spatial_resolution: 1
 
 # default WaterSip setting
-watersip:
+WaterSip:
     # kg/kg
     default_q_diff_p: -0.0002
     # kg/kg
@@ -23,34 +24,41 @@ watersip:
     default_blh_factor: 1.5
 
 #WarerSip-HAMSTER (include STEP 3, 4, 5, 6, 7)
-warerSip-HAMSTER:
+WaterSip-HAMSTER:
     observation_path: '.\P_E_observation'
     P_E_simulation_output_path: '.\P_E_simulation'
     #kg/kg 
     q_diff_p: -0.0002
-    #kg/kg 
+    #kg/kg
     q_diff_e: 0.0002
-    #%, RH 
+    #%, RH
     rh_threshold: 80
-    #BLH scailing factor 
+    #BLH scailing factor
     blh_factor: 1.5
+    #check whether updata P_E_simulation, choose 'flase' when use existing P_E_simulation files
+    update_P_E_simulation: true
 
 #WarerSip-DF (include STEP 1, 2, 3, 4)
-warerSip-DF:
+WaterSip-DF:
     observation_path: '.\P_E_observation'
     DF_file_path: '.\DF'
     #used for select all potential E particles
     q_diff_e_df: 0.0000
-    #used for select all potential P particles 
+    #used for select all potential P particles
     q_diff_p_df: -0.0000
+    #check whether updata DF files, choose 'flase' when use existing DF files
+    update_DF: true
 
 # WarerSip-DF-HAMSTER (include STEP 1, 2, 3, 4, 5, 6, 7)
-warerSip-DF-HAMSTER:
+WaterSip-DF-HAMSTER:
     observation_path: '.\P_E_observation'
     DF_file_path: '.\DF'
     P_E_simulation_output_path: '.\P_E_simulation'
-    #used for select all potential E particles 
+    #used for select all potential E particles
     q_diff_e_df: 0.0000
-    #used for select all potential P particles 
+    #used for select all potential P particles
     q_diff_p_df: -0.0000
-
+    #check whether updata DF files, choose 'flase' when use existing DF files
+    update_DF: ture
+    #check whether updata P_E_simulation, choose 'flase' when use existing P_E_simulation files
+    update_P_E_simulation: true

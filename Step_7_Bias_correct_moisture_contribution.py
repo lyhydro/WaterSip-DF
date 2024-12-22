@@ -9,16 +9,16 @@ from YAMLConfig import YAMLConfig
 #%% * * * * * * * * * * MAIN * * * * * * * * * *
 def bias_correct_moisture_contribution(df_method):
     config = YAMLConfig('config.yaml')
-    general_config = config.get('general')
+    general_config = config.get('General')
     tracking_days = general_config['tracking_days']
     start_time = str(general_config['start_time'])
     end_time = str(general_config['end_time'])
 
     path_config = config.get('path')
-    observation_path = config.get('warerSip-DF-HAMSTER')['observation_path']
+    observation_path = config.get('WaterSip-DF-HAMSTER')['observation_path']
     final_output_path = general_config['final_output_path']
     target_region = general_config['target_region']
-    P_E_simulation_output_path = config.get('warerSip-DF-HAMSTER')['P_E_simulation_output_path']
+    P_E_simulation_output_path = config.get('WaterSip-DF-HAMSTER')['P_E_simulation_output_path']
 
     if df_method == 'on':
         moisture_contribution_mm = xr.open_dataset('{}\moisture_contribution_mm_DF_{}_{}.nc'.format(final_output_path, start_time, end_time))['moisture_contribution_mm']

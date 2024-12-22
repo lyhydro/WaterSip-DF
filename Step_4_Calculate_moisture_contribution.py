@@ -10,14 +10,14 @@ from YAMLConfig import YAMLConfig
 def calculate_moisture_contribution(df_method):
     print('begin step 4:moisture contribution !')
     config = YAMLConfig('config.yaml')
-    general_config = config.get('general')
+    general_config = config.get('General')
     time_span = general_config['time_span']
     output_spatial_resolution = general_config['output_spatial_resolution']
     start_time = str(general_config['start_time'])
     end_time = str(general_config['end_time'])
 
     partposit_path = general_config['partposit_path']
-    DF_file_path = config.get('warerSip-DF')['DF_file_path']
+    DF_file_path = config.get('WaterSip-DF')['DF_file_path']
     target_region = general_config['target_region']
     temporary_file_path = general_config['temporary_file_path']
     final_output_path = general_config['final_output_path']
