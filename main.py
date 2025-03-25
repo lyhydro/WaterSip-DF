@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-import argparse
 import sys
 from WaterSip import main_watersip
 from WaterSip_DF import main_watersip_df

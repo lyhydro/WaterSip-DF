@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
-from Step_3_Filtering_and_tracking import filtering_and_tracking
-from Step_4_Calculate_moisture_contribution import calculate_moisture_contribution
+from Step_3_Filtering_and_tracking import FilteringAndTracking
+from Step_4_Calculate_moisture_contribution import CalculateMoistureContribution
 
 
 def main_watersip():
     # step 3
-    filtering_and_tracking('off')
+    ft = FilteringAndTracking('WaterSip')
+    ft.filtering_and_tracking('off')
     # step 4
-    calculate_moisture_contribution('off')
+    cmc = CalculateMoistureContribution()
+    cmc.calculate_moisture_contribution('off')
 
