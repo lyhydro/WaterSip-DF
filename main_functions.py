@@ -16,18 +16,47 @@ from YAMLConfig import YAMLConfig
 # %% * * * * * * * * * * * * FLEXPART output to E/P simulation functions * * * * * * * * * * * *
 # %%
 def get_files(flexpart_output_file, start, end, time_span, key_string='partposit_'):
-    lists = os.listdir(flexpart_output_file)
-    start_date = datetime.strptime(start, '%Y%m%d%H')  # - timedelta(hours=time_span) #根据start设定，看是否多取了向前一步的时间，便于计算diff
-    end_date = datetime.strptime(end, '%Y%m%d%H')
-    date = []
-    while start_date <= end_date:
-        date.append(start_date.strftime('%Y%m%d%H'))
-        start_date += timedelta(hours=time_span)
+    start_date = datetime.strptime(start, '%Y%m%d%H')
     files = []
-    for i in lists:
-        for t in date:
-            if key_string in i and t in i:
-                files.append(os.path.join(flexpart_output_file, i))
+    while start_date <= datetime.strptime(end, '%Y%m%d%H'):
+        file_str = start_date.strftime('%Y%m%d%H0000')
+        file_name = f'{key_string}{file_str}'
+        file_path = os.path.join(flexpart_output_file, file_name)
+        files.append(file_path)
+        start_date = start_date + timedelta(hours=time_span)
+    return files
+
+def get_files_temporary(flexpart_output_file, start, end, time_span, key_string='-6_P_particle_tracking_table.pkl'):
+    start_date = datetime.strptime(start, '%Y%m%d%H')
+    files = []
+    while start_date <= datetime.strptime(end, '%Y%m%d%H'):
+        file_str = start_date.strftime('%Y%m%d%H')
+        file_name = f'{file_str}{key_string}'
+        file_path = os.path.join(flexpart_output_file, file_name)
+        files.append(file_path)
+        start_date = start_date + timedelta(hours=time_span)
+    return files
+
+
+def get_files_new(flexpart_output_file: str, start: str, end: str, time_span: int,
+                  key_string: str = 'partposit_') -> list:
+    lists = os.listdir(flexpart_output_file)
+    lists = sorted(lists)
+    start_date = datetime.strptime(start, '%Y%m%d%H')
+    end_date = datetime.strptime(end, '%Y%m%d%H')
+    #
+    date_list = [
+        (start_date + timedelta(hours=hours)).strftime('%Y%m%d%H')
+        for hours in
+        range(0, (end_date - start_date).days * 24 + (end_date - start_date).seconds // 3600 + 1, time_span)
+    ]
+    #
+    files = [
+        os.path.join(flexpart_output_file, i)
+        for i in lists
+        if key_string in i and any(t in i for t in date_list)
+    ]
+    print(files)
     return files
 
 
@@ -71,7 +100,7 @@ def readpartposit(file, nspec=1):
 
 # %%
 def readpartposit_to_df(file, variables=None):
-    # 变量映射关系
+    #
     variable_map = {
         'lon': 2,
         'lat': 3,
@@ -82,23 +111,23 @@ def readpartposit_to_df(file, variables=None):
         't': 12,
         'mass': 13
     }
-    # 打开文件并读取数据
+    #
     with open(file, 'rb') as f:
         nbytes = os.fstat(f.fileno()).st_size
         numpart = round((nbytes / 4 + 3) / 15 - 1)
-        f.read(4 * 3)  # 跳过文件头
+        f.read(4 * 3)  # skip the head
         data_as_int = np.fromfile(f, dtype=np.int32, count=numpart * 15).reshape(-1, 15).T
-        f.seek(4 * 3)  # 重置文件位置
+        f.seek(4 * 3)  # reload position
         data_as_float = np.fromfile(f, dtype=np.float32, count=numpart * 15).reshape(-1, 15).T
-    # 默认输出所有变量
+    # 
     if variables is None:
         variables = list(variable_map.keys())
-    # 构建输出 DataFrame
+    # 
     output_data = {}
     for var in variables:
         if var in variable_map:
             output_data[var] = data_as_float[variable_map[var], :]
-    output = pd.DataFrame(output_data, index=data_as_int[1, :])  # 设置索引为点 ID
+    output = pd.DataFrame(output_data, index=data_as_int[1, :]) 
     return output
 
 
@@ -159,20 +188,19 @@ def calculate_RH(df, RH_name='RH', dens='dens', q='q', t='t'):
     # es = 6.112*np.exp((17.67*(df['t']-273.16))/(df['t']-29.65))
     # qs = 0.622*es/(p-0.378*es)
     # df['RH_new'] = 100*df['q']/qs
-    df[RH_name] = 26.3 * p * df[q] / np.exp((17.67 * (df[t] - 273.16)) / (df[
-                                                                              t] - 29.65))  # https://earthscience.stackexchange.com/questions/2360/how-do-i-convert-specific-humidity-to-relative-humidity
+    df[RH_name] = 26.3 * p * df[q] / np.exp((17.67 * (df[t] - 273.16)) / (df[t] - 29.65))  # https://earthscience.stackexchange.com/questions/2360/how-do-i-convert-specific-humidity-to-relative-humidity
 
 
 # %%
 def midpoint(lat1, lon1, lat2, lon2):
-    # 转换为弧度
+    # 
     lat1, lon1, lat2, lon2 = map(np.radians, [lat1, lon1, lat2, lon2])
-    # 计算笛卡尔坐标
+    # 
     x1, y1, z1 = np.cos(lat1) * np.cos(lon1), np.cos(lat1) * np.sin(lon1), np.sin(lat1)
     x2, y2, z2 = np.cos(lat2) * np.cos(lon2), np.cos(lat2) * np.sin(lon2), np.sin(lat2)
-    # 计算中点的笛卡尔坐标
+    # 
     x_mid, y_mid, z_mid = (x1 + x2) / 2, (y1 + y2) / 2, (z1 + z2) / 2
-    # 计算中点的地理坐标
+    # 
     hyp = np.sqrt(x_mid ** 2 + y_mid ** 2)
     mid_lat = np.degrees(np.arctan2(z_mid, hyp))
     mid_lon = np.degrees(np.arctan2(y_mid, x_mid))
@@ -181,20 +209,20 @@ def midpoint(lat1, lon1, lat2, lon2):
 
 # %%
 def point_distance(lat1, lon1, lat2, lon2):
-    # 地球半径（m）
+    # 
     R = 6371393
-    # 将输入的纬度和经度转换为弧度
+    # 
     lat1 = np.radians(lat1)
     lon1 = np.radians(lon1)
     lat2 = np.radians(lat2)
     lon2 = np.radians(lon2)
-    # 计算纬度和经度差
+    # 
     dlat = lat2 - lat1
     dlon = lon2 - lon1
-    # 哈弗萨因公式
+    # 
     a = np.sin(dlat / 2) ** 2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon / 2) ** 2
     c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
-    # 计算距离
+    # 
     distance = R * c
     return distance
 
@@ -206,7 +234,7 @@ def from_shp_get_parts(df, shp_file):
         gdf_shp = gpd.read_file(shp_file)
     except Exception as e:
         print(f"An error occurred: {e}")
-    # 先将df按矩形框筛选一遍，减少后期计算量
+    # 
     shp_bounds = gdf_shp.total_bounds
     df = df[(df['lon'] >= shp_bounds[0]) & (df['lon'] <= shp_bounds[2]) & (df['lat'] >= shp_bounds[1]) & (
             df['lat'] <= shp_bounds[3])]
@@ -214,7 +242,7 @@ def from_shp_get_parts(df, shp_file):
     gdf_points = gpd.GeoDataFrame(geometry=points, index=df.index, crs=gdf_shp.crs)
     points_within_shp = gpd.sjoin(gdf_points, gdf_shp, predicate='within')
     return df.loc[
-        points_within_shp.index]  # .loc是基于标签索引，.iloc是基于位置索引，两者都可以基于索引号df.loc[df.index=='']，df.iloc[df.index.get_loc('')]
+        points_within_shp.index]  
 
 
 # %%
@@ -225,13 +253,15 @@ def from_bounds_get_parts(df, lat_up, lat_down, lon_left, lon_right):
 
 
 # %%
-def back_tracking_files(flexpart_output_file, start_time, tracking_days, time_span):
-    lists = os.listdir(flexpart_output_file)
-    find_file = 'partposit_' + start_time
-    position = [index for index, item in enumerate(lists) if find_file in item]
+def back_tracking_files(flexpart_output_file, start_time, tracking_days, time_span, key_string='partposit_'):
+    start_date = datetime.strptime(start_time, '%Y%m%d%H')
     files = []
-    for i in range(int(position[0] - tracking_days * 24 / time_span), position[0] + 1):
-        files.append(os.path.join(flexpart_output_file, lists[i]))
+    for i in range(1 + tracking_days * 24 // time_span):
+        current_time = start_date - timedelta(hours=i * time_span)
+        file_str = current_time.strftime('%Y%m%d%H0000')
+        file_name = f'{key_string}{file_str}'
+        file_path = os.path.join(flexpart_output_file, file_name)
+        files.append(file_path)
     return files
 
 
@@ -256,9 +286,9 @@ def from_shp_get_mask(shp, latitude, longitude):
     shp_geom = shape(gdf_shp.geometry.unary_union)
     for i, lat in enumerate(latitude):
         for j, lon in enumerate(longitude):
-            point = Point(lon, lat)  # 构建点
-            if point.within(shp_geom):  # 判断点是否在shp文件的范围内
-                mask[i, j] = 1  # 在shp范围内的点赋值为1
+            point = Point(lon, lat) 
+            if point.within(shp_geom):  
+                mask[i, j] = 1  
     return mask
 
 
@@ -274,7 +304,9 @@ def from_bounds_get_mask(lat_up, lat_down, lon_left, lon_right, latitude, longit
 def get_df_BLH_factor(DF_file_path, start_time, tracking_days, direction='backward'):
     pattern = re.compile(r"DF_BLH_factors_(\d{10})\.nc")
     end_time = (datetime.strptime(start_time, '%Y%m%d%H') - timedelta(days=tracking_days)).strftime('%Y%m%d%H')
-    selected_files = [file for file in os.listdir(DF_file_path)
+    lists = os.listdir(DF_file_path)
+    lists = sorted(lists)
+    selected_files = [file for file in lists
                       if (match := pattern.search(file)) and end_time <= match.group(1) <= start_time]
     if selected_files[0][-13:-3] > end_time:
         print(' * * * Lacking enough DF_BLH_factors files! * * *')
@@ -288,8 +320,7 @@ def get_df_BLH_factor(DF_file_path, start_time, tracking_days, direction='backwa
         df.append(df0)
     return pd.concat(df, ignore_index=True)
 
-
-# 检查文件是否存在
+#%%
 def check_file(file_path):
     return os.path.exists(file_path)
 
@@ -309,61 +340,9 @@ def gen_df_rh_or_p_simulation_files():
     return files
 
 
-def gen_df_blh_or_e_simulation_files(file_path, prefix):
-    config = YAMLConfig('config.yaml')
-    general_config = config.get('General')
-    tracking_days = general_config['tracking_days']
-    time_span = general_config['time_span']
-    start_time = str(general_config['start_time'])
-    end_time = str(general_config['end_time'])
-
-    time = pd.date_range(start=pd.to_datetime(start_time, format='%Y%m%d%H') - pd.Timedelta(days=tracking_days)
-                         , end=pd.to_datetime(end_time, format='%Y%m%d%H'), freq='{}H'.format(time_span))[:-1]
-    files = [os.path.join(file_path, f"{prefix}_{time.strftime('%Y%m%d%H')}.nc") for time in time]
-
-    return files
-
-
-# 检查DF文件夹是否有相应时刻的文件，有则返回True， 无则返回False
-def check_df_file():
-    config = YAMLConfig('config.yaml')
-    DF_file_path = config.get('WaterSip-DF')['DF_file_path']
-    # DF_BLH***文件时间段需要包含start time + end time + 整个tracking days的时间段
-    blh_files = gen_df_blh_or_e_simulation_files(DF_file_path, "DF_BLH_factors")
-    for file_path in blh_files:
-        if not os.path.exists(file_path):
-            print(f"{file_path} not exist!")
-            return False
-            break
-    # DF_RH***文件只需要包含start time 到 end time之间即可
-    rh_files = gen_df_rh_or_p_simulation_files()
-    for file_path in rh_files:
-        if not os.path.exists(file_path):
-            print(f"{file_path} not exist!")
-            return False
-            break
-    return True
-
-
-# 检查P_E_simulation文件夹是否有相应时刻的文件，有则返回True，无则返回False
-def check_p_e_simulation():
-    config = YAMLConfig('config.yaml')
-    file_path = config.get('WaterSip-HAMSTER')['P_E_simulation_output_path']
-
-    e_simulation_files = gen_df_blh_or_e_simulation_files(file_path, "E_simulation_mm")
-    for file_path in e_simulation_files:
-        if not os.path.exists(file_path):
-            print(f"{file_path} not exist!")
-            return False
-            break
-        
-    p_simulation_files = gen_df_rh_or_p_simulation_files()
-    for file_path in p_simulation_files:
-        if not os.path.exists(file_path):
-            print(f"{file_path} not exist!")
-            return False
-            break
-    return True
+#
+def calculate_coordinate_round(coordinate_value, output_spatial_resolution):
+    return (coordinate_value / output_spatial_resolution).round() * output_spatial_resolution
 
 
 def read_cmdargs():
@@ -402,5 +381,7 @@ def read_cmdargs():
 
 
 if __name__ == "__main__":
-    result = check_p_e_simulation()
-    print(result)
+    # result = check_p_e_simulation()
+    # print(result)
+    get_files('.\partposit_file', '2023070100', '2023080100', 9)
+    get_files_new('.\partposit_file', '2023070100', '2023080100', 9)
