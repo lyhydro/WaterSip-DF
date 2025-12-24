@@ -3,6 +3,8 @@ This is the Python project that can be used to implement the WaterSip (Sodemann 
 This project consists of seven core scripts (Step 1–7), and their logic and inclusion relationships with the respective methods are illustrated in the following Figure, using dashed boxes in different colors (different functions require the participation of different core scripts). For example, the default WaterSip method only involves STEP 3 and 4, whereas the WaterSip-DF-HAMSTER approach requires all seven scripts (STEP 1–7). This project is easy to use as a command-line tool, with relevant parameter configurations editable in the YAML file. 
 ![image](https://github.com/user-attachments/assets/25c0f30e-9201-4147-9af7-fed30a1d760c)
 
+The toolkit is designed to run from the command line, with all relevant parameter easily configurable via a standalone text file. Users can define target regions using either simple rectangular coordinates or shapefiles (.shp) for more complex geographical boundaries. For the default WaterSip method, uses can specify different Δq and RH thresholds, as well as BLH scaling factors. The DF and HAMSTER bias correction methods require extra observational data in addition to the original FLEXPART outputs (partposit_*). These scripts also support real-time output of filtered precipitation and evaporation particles, particle trajectory diagnostics, and global precipitation and evaporation simulations. 
+
 #### Install
 To install this code package, do the following:
 1. Clone the repository
@@ -16,7 +18,7 @@ pip install -r requirements.txt
 ```
 
 #### Configuration
-Refer to and modify the **config.yaml** file.
+Refer to and modify the **config.py** file.
 
 #### Required data
 1. Place the "partposit*" files (FLEXPART output under domain-filling mode) into the **partposit_file** folder.
@@ -34,6 +36,7 @@ python main.py watersip-hamster
 # WaterSip-DF-HAMSTER
 python main.py watersip-df-hamster
 ```
+
 
 
 
