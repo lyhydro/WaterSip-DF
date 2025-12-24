@@ -1,414 +1,223 @@
 # -*- coding: utf-8 -*-
+
 import os
 import pandas as pd
+import polars as pl  
 import numpy as np
 import xarray as xr
-from main_functions import get_files, readpartposit_to_df, from_shp_get_parts, from_bounds_get_parts, calculate_RH, \
-    midpoint, back_tracking_files, get_df_BLH_factor, writepkl, calculate_coordinate_round
 import time
-from YAMLConfig import YAMLConfig
-import logging
 import gc
+from functions import (get_files, readpartposit_to_df, from_shp_get_parts, 
+                      from_bounds_get_parts, calculate_RH, midpoint, 
+                      back_tracking_files, get_df_BLH_factor, writepkl, 
+                      calculate_coordinate_round, get_algorithm_params)
+import config
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+def filtering_and_tracking(method, df_method):
 
+    begin_time = time.time()
+    print(f'\nStep 3 ({method}): Particle filtering and moisture tracking...')
+    
+    params = get_algorithm_params(method)
+    files_list = get_files(config.PARTPOSIT_PATH, config.START_TIME, config.END_TIME, config.TIME_SPAN)
+    
+    temp_rh_threshold = {}
 
-class FilteringAndTracking:
+    #%% ==========================================================================
+    def get_and_track_particles(file, prefile, df_method, i):
 
-    def __init__(self, WaterSip_method):
-        config = YAMLConfig('config.yaml')
-        # General setting
-        general_config = config.get('General')
-        self.WaterSip_method = WaterSip_method 
-        self.tracking_days = general_config['tracking_days']
-        self.time_span = general_config['time_span']
-        self.output_spatial_resolution = general_config['output_spatial_resolution']
-        self.start_time = str(general_config['start_time'])
-        self.end_time = str(general_config['end_time'])
-        self.partposit_path = general_config['partposit_path']
-        self.target_region = general_config['target_region']
-        self.temporary_file_path = general_config['temporary_file_path']
-        # default WaterSip setting
-        self.default_q_diff_p = 0
-        self.default_q_diff_e = 0.0002
-        self.default_rh_threshold = 80
-        self.default_blh_factor = 1.5
-        #
-        if WaterSip_method=='WaterSip':
-            self.q_diff_p = config.get('WaterSip')['q_diff_p']
-            self.q_diff_e = config.get('WaterSip')['q_diff_e']
-            self.rh_threshold = config.get('WaterSip')['rh_threshold']
-            self.blh_factor = config.get('WaterSip')['blh_factor']
-        elif WaterSip_method=='WaterSip-HAMSTER':
-            self.q_diff_p = config.get('WaterSip-HAMSTER')['q_diff_p']
-            self.q_diff_e = config.get('WaterSip-HAMSTER')['q_diff_e']
-            self.rh_threshold = config.get('WaterSip-HAMSTER')['rh_threshold']
-            self.blh_factor = config.get('WaterSip-HAMSTER')['blh_factor']
-        elif WaterSip_method=='WaterSip-DF':
-            self.q_diff_p = config.get('WaterSip-DF')['q_diff_p_df']
-            self.q_diff_e = config.get('WaterSip-DF')['q_diff_e_df']
-            self.DF_file_path = config.get('WaterSip-DF')['DF_file_path'] 
-        elif WaterSip_method=='WaterSip-DF-HAMSTER':
-            self.q_diff_p = config.get('WaterSip-DF-HAMSTER')['q_diff_p_df']
-            self.q_diff_e = config.get('WaterSip-DF-HAMSTER')['q_diff_e_df']
-            self.DF_file_path = config.get('WaterSip-DF-HAMSTER')['DF_file_path'] 
-        #
-        self.temp_rh_threshold = {}
-        # 
-        self.file_cache = {}
-        # 
-        self.max_cache_size = general_config['max_cache_size']
-        # 
-        self.blh_factor_cache = {}
-        # 
-        self.files_list = None
-        # 
-        self.tracking_results_cache = {}
-
-    # %% * * * * * * * * * * * * * * * * * * * * * MAIN - found all P particles * * * * * * * * * * * * * * * * * * * * *
-    def filtering_and_tracking(self, df_method):
-        begin_time = time.time()
-        print(f'Step 3 ({self.WaterSip_method}): Particle filtering and moisture tracking...')
-        print(f"start_time：{self.start_time}")
-        print(f"end_time：{self.end_time}")
-        print(f"tracking_days：{self.tracking_days}")
-        # 
-        self.files_list = get_files(self.partposit_path, self.start_time, self.end_time, self.time_span)      
-        # 
-        self._preload_files(self.files_list[:min(self.max_cache_size, len(self.files_list))])   
-        # 
-        for i in range(1, len(self.files_list)):
-            try:
-                self.calculate_q_diff(self.files_list[i], self.files_list[i - 1], df_method, i)
-            except Exception as e:
-                print(f'!!! calculate_q_diff generated an exception: {e}')
-                logging.error(f"!!! Error processing file {self.files_list[i]}: {e}", exc_info=True)
-
-        end_time = time.time()
-        execution_time = end_time - begin_time
-        print(f"\nProgram execution time: {execution_time} seconds")
-        print('Step 3 done!')
-        # %%
-
-    def _preload_files(self, files):
-        print(f"Preload {len(files)} start files into cache")
-        for f in files:
-            if f not in self.file_cache:
-                try:
-                    df = readpartposit_to_df(f, variables=['lon', 'lat', 'z', 'q', 'blh', 'mass', 't', 'dens'])
-                    self.file_cache[f] = df
-                except Exception as e:
-                    print(f"!!! Preloading file {f} failed: {e}")
-        print("Preloading complete.")
-
-    def calculate_q_diff(self, file, prvfile, df_method, i):
-        # Record the start time of the function
-        start_time = time.time()
-        print(f"\nStrat identify P particles for {os.path.basename(prvfile)[-14:-4]}")
+        df = readpartposit_to_df(file, variables=['lon', 'lat', 'z', 'q', 'blh', 'mass', 't', 'dens'])
+        df0 = readpartposit_to_df(prefile, variables=['lon', 'lat', 'z', 'q', 'blh', 't', 'dens'])
         
-        # Read from cache or load file from disk
-        if file in self.file_cache:
-            df = self.file_cache[file]
-        else:
-            df = readpartposit_to_df(file, variables=['lon', 'lat', 'z', 'q', 'blh', 'mass', 't', 'dens'])
-            self.file_cache[file] = df
-            
-        if prvfile in self.file_cache:
-            df0 = self.file_cache[prvfile]
-        else:
-            df0 = readpartposit_to_df(prvfile, variables=['lon', 'lat', 'z', 'q', 'blh', 't', 'dens'])
-            self.file_cache[prvfile] = df0
-        
-        # 
         if 'RH' not in df.columns:
             calculate_RH(df)
         if 'RH' not in df0.columns:
             calculate_RH(df0, RH_name='RH', dens='dens', q='q', t='t')
-    
-        # Use a more efficient merging method.
+ 
         common_indices = df.index.intersection(df0.index)        
-        # 
         df = df.loc[common_indices]
         df0 = df0.loc[common_indices]        
 
-        # 
-        result_df = pd.DataFrame({
-            'lat': df['lat'].values,
-            'lon': df['lon'].values,
-            'lat0': df0['lat'].values,
-            'lon0': df0['lon'].values,
-            'q': df['q'].values,
-            'q0': df0['q'].values,
-            'RH': df['RH'].values,
-            'RH0': df0['RH'].values,
-            'mass': df['mass'].values
-        }, index=common_indices)
+        df_pl = pl.from_pandas(df.reset_index())
+        df0_pl = pl.from_pandas(df0.reset_index()) 
         
-        # q_diff
-        result_df['q_diff'] =  result_df['q'] - result_df['q0']        
-        result_df = result_df.drop(columns=['q','q0'])
-               
-        # Filtering q_diff
-        result_df = result_df[ result_df['q_diff'] < self.q_diff_p ]
+        result_pl = df_pl.join(df0_pl, on="index", suffix="_0").with_columns([
+            (pl.col("q") - pl.col("q_0")).alias("q_diff"),
+            ((pl.col("RH") + pl.col("RH_0")) / 2).alias("RH_avg")
+        ]).filter(
+            pl.col("q_diff") < params['q_diff_p']
+        ).select([
+            "index", "lat", "lon", "lat_0", "lon_0", "q_diff", "RH_avg", "mass"
+        ])
         
-        # Calculate the midpoint coordinates
+        if result_pl.height == 0:
+            print(f"No particles after q_diff filtering for {prefile[-14:-4]}")
+            return
+        
+        result_df = result_pl.to_pandas().set_index('index')
+        result_df = result_df.rename(columns={'RH_avg': 'RH'})
+        
         result_df['lat'], result_df['lon'] = midpoint(result_df['lat'].values, 
                                                       result_df['lon'].values, 
-                                                      result_df['lat0'].values, 
-                                                      result_df['lon0'].values )       
-        result_df = result_df.drop(columns=['lat0', 'lon0'])
+                                                      result_df['lat_0'].values, 
+                                                      result_df['lon_0'].values)       
+        result_df = result_df.drop(columns=['lat_0', 'lon_0'])
         
-        # Filtering particles in the research area
-        if self.target_region[-4:] == '.shp':
-            result_df = from_shp_get_parts(result_df, self.target_region)
-        elif isinstance(self.target_region, list):
+        if isinstance(config.TARGET_REGION, str) and config.TARGET_REGION.endswith('.shp'):
+            result_df = from_shp_get_parts(result_df, config.TARGET_REGION)
+        elif isinstance(config.TARGET_REGION, list):
             result_df = from_bounds_get_parts(result_df, 
-                                              self.target_region[0], 
-                                              self.target_region[1], 
-                                              self.target_region[2],
-                                              self.target_region[3] )
+                                              config.TARGET_REGION[0], 
+                                              config.TARGET_REGION[1], 
+                                              config.TARGET_REGION[2],
+                                              config.TARGET_REGION[3])
         
-        # Calculate the mid RH
-        result_df['RH'] = (result_df['RH'] + result_df['RH0']) / 2
-        result_df = result_df.drop(columns=['RH0'])
-        
-        # Filter according to the method
-        tmp_time = prvfile[-14:-4]
+        tmp_time = prefile[-14:-4]
         if df_method == 'on':
-            # Calculate the coordinate grid
-            result_df['lat_round'] = calculate_coordinate_round(result_df['lat'], self.output_spatial_resolution)
-            result_df['lon_round'] = calculate_coordinate_round(result_df['lon'], self.output_spatial_resolution)
+            result_df['lat_round'] = calculate_coordinate_round(result_df['lat'], config.OUTPUT_SPATIAL_RESOLUTION)
+            result_df['lon_round'] = calculate_coordinate_round(result_df['lon'], config.OUTPUT_SPATIAL_RESOLUTION)
             
-            # get DF_RH_thresholds and transfor to dataframe
-            if tmp_time not in self.temp_rh_threshold:
-                try:
-                    rh_file = f'{self.DF_file_path}/DF_RH_thresholds_{tmp_time}.nc'
-                    RH_threshold = xr.open_dataset(rh_file)['DF_RH_thresholds']
-                    self.temp_rh_threshold[tmp_time] = RH_threshold
-                except Exception as e:
-                    print(f"!!! Failed to read the RH threshold file: {e}")
-                    # Using default values
-                    result_df = result_df[result_df['q_diff'] < self.default_q_diff_p]
-                    result_df = result_df[result_df['RH'] > self.default_rh_threshold]
-                    result_df = result_df.drop(columns=['RH'])
+            if tmp_time not in temp_rh_threshold:
+                rh_file = f'{config.DF_FILE_PATH}/DF_RH_thresholds_{tmp_time}.nc'
+                RH_threshold = xr.open_dataset(rh_file)['DF_RH_thresholds']
+                temp_rh_threshold[tmp_time] = RH_threshold
             else:
-                RH_threshold = self.temp_rh_threshold[tmp_time]
+                RH_threshold = temp_rh_threshold[tmp_time]
             
-            # Convert to DataFrame and filter
-            try:
-                df_RH_threshold = RH_threshold.to_dataframe(name='RH_threshold').reset_index()
-                df_RH_threshold = df_RH_threshold.query("RH_threshold != 100 and RH_threshold.notna()", engine='numexpr')
-                
-                # merging 
-                original_index = result_df.index  # keep index
-                result_df = pd.merge(result_df, 
-                                     df_RH_threshold, 
-                                     how='left', 
-                                     left_on=['lat_round', 'lon_round'],
-                                     right_on=['latitude', 'longitude'] )
-                result_df.index = original_index  # recover index
-                
-                # Filter RH
-                result_df = result_df[ result_df['RH'] >= result_df['RH_threshold'] ]
-                
-                # Delete unnecessary columns
-                result_df = result_df.drop(columns=['latitude', 'longitude', 'RH', 
-                                                    'RH_threshold', 'lat_round', 'lon_round' ])
+            df_RH_threshold = RH_threshold.to_dataframe(name='RH_threshold').reset_index()
+            df_RH_threshold = df_RH_threshold.query("RH_threshold != 100 and RH_threshold.notna()", engine='numexpr')
             
-            except Exception as e:
-                print(f"!!! RH threshold processing failed: {e}")
-                # Using default values
-                result_df = result_df[result_df['q_diff'] < self.default_q_diff_p]
-                result_df = result_df[result_df['RH'] > self.default_rh_threshold]
-                result_df = result_df.drop(columns=['RH', 'lat_round', 'lon_round'])
+            result_pl = pl.from_pandas(result_df.reset_index())
+            rh_threshold_pl = pl.from_pandas(df_RH_threshold)
+            
+            result_pl = result_pl.with_columns([
+                pl.col("lat_round").cast(pl.Float64),
+                pl.col("lon_round").cast(pl.Float64)
+            ])
+            rh_threshold_pl = rh_threshold_pl.with_columns([
+                pl.col("latitude").cast(pl.Float64),
+                pl.col("longitude").cast(pl.Float64)
+            ])
+            
+            merged_pl = result_pl.join(
+                rh_threshold_pl,
+                left_on=['lat_round', 'lon_round'],
+                right_on=['latitude', 'longitude'],
+                how='left'
+            ).filter(
+                pl.col('RH') >= pl.col('RH_threshold')
+            ).select([
+                "index", "lat", "lon", "q_diff", "mass"
+            ])
+            
+            result_df = merged_pl.to_pandas().set_index('index')
+            
         else:
-            # Use WaterSip
-            result_df = result_df[result_df['q_diff'] < self.q_diff_p]
-            result_df = result_df[result_df['RH'] > self.rh_threshold]
+            rh_threshold = params.get('rh_threshold')
+            result_df = result_df[result_df['RH'] > rh_threshold]
             result_df = result_df.drop(columns=['RH'])
         
-        # Calculate p_mass
         result_df['p_mass'] = -result_df['mass'] * result_df['q_diff']
         
-        # Track particles
-        self.track_particles(i - 1, tmp_time, result_df, df_method)
+        track_particles(i - 1, tmp_time, result_df, df_method)
         
-        # Record processing time
-        end_time = time.time()
-        print(f"\n{os.path.basename(file)[-14:-4]} processing complete, total duration: {end_time - start_time:.2f} seconds")
-        
-        # Clear Memory
-        del df, df0, result_df
-        if len(self.file_cache) > self.max_cache_size:
-            # Delete the earliest cache item
-            oldest_key = next(iter(self.file_cache))
-            del self.file_cache[oldest_key]
+        del result_df, result_pl, merged_pl  
         gc.collect()
-
-    def track_particles(self, i, times, all_P_parts, df_method):
-        # Check if it has been processed already
-        cache_key = f"{times}_{df_method}"
-        if cache_key in self.tracking_results_cache:
-            print(f"Using cached tracking results: {times}")
-            return self.tracking_results_cache[cache_key]
-            
-        # Record the start time
-        track_start = time.time()
-        print(f"Start track particles for {times}, particle number: {len(all_P_parts)}")
+    
+    def track_particles(i, times, all_P_parts, df_method):
+        print(f"\nStart track particles for {times}, particle number: {len(all_P_parts)}")
         
         if len(all_P_parts) == 0:
-            print(f"!!! Warning: {times} No particles found")
+            print(f"! Warning: {times} No particles found")
+
+            empty_result = []
+            output_path = f"{config.TEMPORARY_FILE_PATH}/{times}-{config.TIME_SPAN}_P_particle_backward_files.pkl"
+            writepkl(output_path, empty_result)
+            
+            empty_tracking_table = []
+            tracking_output_path = os.path.join(config.TEMPORARY_FILE_PATH,
+                                               f"{times}-{config.TIME_SPAN}_P_particle_tracking_table.pkl")
+            writepkl(tracking_output_path, empty_tracking_table)
+            print(f"Generated empty pkl files for {times}")
             return
             
-        # Get the list of backtrack files
-        files_track = back_tracking_files(self.partposit_path, times, self.tracking_days, self.time_span)
-
-        # Preload files
-        for f in files_track:
-            if f not in self.file_cache and len(self.file_cache) < self.max_cache_size:
-                try:
-                    # Ensure that all the required columns are read.
-                    df = readpartposit_to_df(f, variables=['lon', 'lat', 'z', 'q', 'blh', 'mass'])
-                    self.file_cache[f] = df
-                except Exception as e:
-                    print(f"!!! Failed to load file {f}: {e}")
+        files_track = back_tracking_files(config.PARTPOSIT_PATH, times, config.TRACKING_DAYS, config.TIME_SPAN)
         
-        # Initialize a result list with a pre-allocated size.
         result = [None] * (len(files_track) + 1)
         result[0] = all_P_parts
         
-        # Obtain initial particle indices
         particle_indices = all_P_parts.index.values
         
-        # Process each backtrack file
+        print("Loading files with Polars acceleration...")
         for idx, f in enumerate(files_track):
             try:
-                if f in self.file_cache:
-                    df = self.file_cache[f]
-                else:
-                    try:
-                        df = readpartposit_to_df(f, variables=['lon', 'lat', 'z', 'q', 'blh', 'mass'])
-                        # If the cache is not full, add to the cache.
-                        if len(self.file_cache) < self.max_cache_size:
-                            self.file_cache[f] = df
-                    except Exception as e:
-                        print(f"\n!!! Failed to read file {f}: {e}")
-                        # Create an empty DataFrame with all the necessary columns.
-                        df = pd.DataFrame(columns=['lon', 'lat', 'z', 'q', 'blh', 'mass'])
+
+                df_pd = readpartposit_to_df(f, variables=['lon', 'lat', 'z', 'q', 'blh', 'mass'])
                 
-                # Ensure that the DataFrame contains all the required columns.
-                required_columns = ['lon', 'lat', 'z', 'q', 'blh', 'mass']
-                for col in required_columns:
-                    if col not in df.columns:
-                        print(f"!!! Adding missing column {col} to DataFrame")
-                        df[col] = np.nan
+                df_pl = pl.from_pandas(df_pd.reset_index())
                 
-                # Find the common particles
-                common_indices = np.intersect1d(particle_indices, df.index.values)
+                common_indices = np.intersect1d(particle_indices, df_pd.index.values)
                 
-                # Update particle index
-                particle_indices = common_indices
-                
-                # Select only the required columns and index
                 if len(common_indices) > 0:
-                    result[idx + 1] = df.loc[common_indices, required_columns].copy()
+                    filtered_pl = df_pl.filter(
+                        pl.col('index').is_in(common_indices.tolist())
+                    ).select(['index', 'lon', 'lat', 'z', 'q', 'blh', 'mass'])
+                    
+                    result[idx + 1] = filtered_pl.to_pandas().set_index('index')
                 else:
-                    # If there is no common index, create an empty DataFrame.
-                    result[idx + 1] = pd.DataFrame(columns=required_columns)
+                    result[idx + 1] = pd.DataFrame(columns=['lon', 'lat', 'z', 'q', 'blh', 'mass'])
                 
                 print('.', end='')
             except Exception as e:
-                print(f"\n!!! Process file {f} Failure: {e}")
-                # Using an empty DataFrame, ensure that it includes all the necessary columns
+
+                print(f"\n! Process file {f} Failure: {e}")
                 result[idx + 1] = pd.DataFrame(columns=['lon', 'lat', 'z', 'q', 'blh', 'mass'])
         
-        # Save backtracking file results
-        output_path = f"{self.temporary_file_path}/{times}-{self.time_span}_P_particle_backward_files.pkl"
+        output_path = f"{config.TEMPORARY_FILE_PATH}/{times}-{config.TIME_SPAN}_P_particle_backward_files.pkl"
         writepkl(output_path, result)
-        print(f"\nTracking process complete, total duration: {time.time() - track_start:.2f} seconds")
+        print("\nTracking files complete")
         
-        # Processing particle trajectory table
         print("Start to establish particle trajectory table")
         
-        # Obtain all particle indices
-        indexs = result[0].index.values
+        df0 = [None] * len(particle_indices)
         
-        # Pre-allocate result list
-        df0 = [None] * len(indexs)
+        track_times = pd.to_datetime(times, format='%Y%m%d%H') - pd.Timedelta(hours=config.TIME_SPAN) * np.arange(len(result) - 1)
         
-        # Precompute time series
-        track_times = pd.to_datetime(times, format='%Y%m%d%H') - pd.Timedelta(hours=self.time_span) * np.arange(len(result) - 1)
-        
-        # Preloading BLH factors
         if df_method == 'on':
-            blh_key = f"{times}_{self.tracking_days}_backward"
-            if blh_key not in self.blh_factor_cache:
-                try:
-                    self.blh_factor_cache[blh_key] = get_df_BLH_factor(self.DF_file_path, times, self.tracking_days, direction='backward')
-                except Exception as e:
-                    print(f"!!! Failed to load BLH factor: {e}")
+            try:
+                df_BLH_factor = get_df_BLH_factor(config.DF_FILE_PATH, times, config.TRACKING_DAYS, direction='backward')
+            except Exception as e:
+                print(f"! Failed to get BLH factor: {e}")        
         
-        # Bulk processing of particles
-        batch_size = 100  # Number of particles processed per batch
-        for batch_start in range(0, len(indexs), batch_size):
-            batch_end = min(batch_start + batch_size, len(indexs))
-            batch_indices = indexs[batch_start:batch_end]
+        batch_size = 200
+        for batch_start in range(0, len(particle_indices), batch_size):
+            batch_end = min(batch_start + batch_size, len(particle_indices))
+            batch_indices = particle_indices[batch_start:batch_end]
             
-            # Handling particles in batches
             for idx, index in enumerate(batch_indices):
                 global_idx = batch_start + idx
                 try:
-                    # Collect particle data
                     particle_data = []
                     
-                    # Add initial point data
-                    first_point_columns = ['lon', 'lat', 'q_diff', 'mass', 'p_mass']
-                    # Ensure that all columns exist
-                    if not all(col in result[0].columns for col in first_point_columns):
-                        missing_cols = [col for col in first_point_columns if col not in result[0].columns]
-                        print(f"!!! Missing columns in result[0]: {missing_cols}")
-                        # Add default values for missing columns
-                        for col in missing_cols:
-                            result[0][col] = np.nan
+                    particle_data.append(result[0].loc[index, ['lon', 'lat', 'q_diff', 'mass', 'p_mass']])
                     
-                    particle_data.append(result[0].loc[index, first_point_columns])
-                    
-                    # Collect particle data for all time steps
                     for j in range(1, len(result)):
-                        if j < len(result) and result[j] is not None and index in result[j].index:
-                            # Ensure that all required columns are present
-                            required_cols = ['lon', 'lat', 'z', 'q', 'blh']
-                            if not all(col in result[j].columns for col in required_cols):
-                                missing_cols = [col for col in required_cols if col not in result[j].columns]
-                                print(f"!!! Missing columns in result[{j}]: {missing_cols}")
-                                # Add default values for missing columns
-                                for col in missing_cols:
-                                    result[j][col] = np.nan
-                            
-                            particle_data.append(result[j].loc[index, required_cols])
+                        if index in result[j].index:
+                            particle_data.append(result[j].loc[index, ['lon', 'lat', 'z', 'q', 'blh']])
                         else:
-                            # Using NaN values
                             particle_data.append(pd.Series({'lon': np.nan, 'lat': np.nan, 'z': np.nan, 'q': np.nan, 'blh': np.nan}))
                     
-                    # create DataFrame
                     df_index = pd.DataFrame(particle_data).copy()
                     
-                    # Ensure that all required columns are present
-                    required_cols = ['lon', 'lat', 'z', 'q', 'blh', 'q_diff', 'mass', 'p_mass']
-                    for col in required_cols:
-                        if col not in df_index.columns:
-                            df_index[col] = np.nan
-                    
-                    # Calculate the midpoint (using vectorized operations)
                     if len(df_index) > 2:
-                        # 获取数组
-                        lat_vals = df_index['lat'].values
-                        lon_vals = df_index['lon'].values
-                        z_vals = df_index['z'].values
-                        q_vals = df_index['q'].values
-                        blh_vals = df_index['blh'].values
+                        df_pl = pl.from_pandas(df_index)
                         
-                        # Create a new array for midpoint calculation
+                        lat_vals = df_pl.select('lat').to_numpy().flatten()
+                        lon_vals = df_pl.select('lon').to_numpy().flatten()
+                        z_vals = df_pl.select('z').to_numpy().flatten()
+                        q_vals = df_pl.select('q').to_numpy().flatten()
+                        blh_vals = df_pl.select('blh').to_numpy().flatten()
+                        
                         new_lat = lat_vals.copy()
                         new_lon = lon_vals.copy()
                         new_z = z_vals.copy()
@@ -416,116 +225,97 @@ class FilteringAndTracking:
                         new_q_diff[0] = df_index['q_diff'].values[0]
                         new_blh = blh_vals.copy()
                         
-                        # Calculate the midpoint
                         new_lat[1:-1] = (lat_vals[1:-1] + lat_vals[2:]) / 2
                         new_lon[1:-1] = (lon_vals[1:-1] + lon_vals[2:]) / 2
                         new_z[1:-1] = (z_vals[1:-1] + z_vals[2:]) / 2
                         new_q_diff[1:-1] = q_vals[1:-1] - q_vals[2:]
-                        new_blh[1:-1] = (blh_vals[1:-1] + blh_vals[2:]) / 2  # could change to max-blh between two steps, do same change in step 2 
+                        new_blh[1:-1] = (blh_vals[1:-1] + blh_vals[2:]) / 2
                         
-                        # 一次性更新DataFrame，避免链式索引
                         df_index = df_index.assign(lat=new_lat,
                                                    lon=new_lon,
                                                    z=new_z,
                                                    q_diff=new_q_diff,
-                                                   blh=new_blh )
+                                                   blh=new_blh)
                     
-                    # Remove the last line
                     df_index = df_index.iloc[:-1]
                     
-                    # Handling the DF method
                     if df_method == 'on':
-                        # Calculate the coordinate grid
-                        df_index['lat_round'] = calculate_coordinate_round(df_index['lat'], self.output_spatial_resolution)
-                        df_index['lon_round'] = calculate_coordinate_round(df_index['lon'], self.output_spatial_resolution)
+                        df_index['lat_round'] = calculate_coordinate_round(df_index['lat'], config.OUTPUT_SPATIAL_RESOLUTION)
+                        df_index['lon_round'] = calculate_coordinate_round(df_index['lon'], config.OUTPUT_SPATIAL_RESOLUTION)
                         df_index['start_time'] = track_times
                         
-                        # Obtain the BLH factor
-                        blh_key = f"{times}_{self.tracking_days}_backward"
-                        if blh_key in self.blh_factor_cache:
-                            df_BLH_factor = self.blh_factor_cache[blh_key]
-                        else:
-                            try:
-                                df_BLH_factor = get_df_BLH_factor(self.DF_file_path, times, self.tracking_days, direction='backward')
-                                self.blh_factor_cache[blh_key] = df_BLH_factor
-                            except Exception as e:
-                                print(f"!!! Failed to get BLH factor: {e}")
-                                # Create a default BLH factor
-                                df_BLH_factor = pd.DataFrame(columns=['latitude', 'longitude', 'time', 'BLH_factor'])
-                        
                         try:
-                            # Merge data
-                            df_index = pd.merge( df_index, df_BLH_factor, how='left', 
-                                                left_on=['lat_round', 'lon_round', 'start_time'], 
-                                                right_on=['latitude', 'longitude', 'time'] )
+
+                            df_index_pl = pl.from_pandas(df_index.reset_index(drop=True))
+                            df_BLH_factor_pl = pl.from_pandas(df_BLH_factor.reset_index(drop=True))
                             
-                            # Delete unnecessary columns
+                            df_index_pl = df_index_pl.with_columns([
+                                pl.col("lat_round").cast(pl.Float64),
+                                pl.col("lon_round").cast(pl.Float64)
+                            ])
+                            df_BLH_factor_pl = df_BLH_factor_pl.with_columns([
+                                pl.col("latitude").cast(pl.Float64),
+                                pl.col("longitude").cast(pl.Float64)
+                            ])
+                            
+                            merged_pl = df_index_pl.join(
+                                df_BLH_factor_pl,
+                                left_on=['lat_round', 'lon_round', 'start_time'],
+                                right_on=['latitude', 'longitude', 'time'],
+                                how='left'
+                            )
+                            
+                            df_index = merged_pl.to_pandas()
+                            
                             drop_cols = ['latitude', 'longitude', 'start_time', 'time', 'lat_round', 'lon_round']
                             df_index = df_index.drop(columns=[col for col in drop_cols if col in df_index.columns])
                             
-                            # If the "BLH_factor" column does not exist, add a default value.
-                            if 'BLH_factor' not in df_index.columns:
-                                df_index['BLH_factor'] = self.default_blh_factor
-                            
-                            # Calculate f0 (using vectorized operations)
-                            mask = (df_index['q_diff'] > self.q_diff_e) & (df_index['z'] < (df_index['BLH_factor'] * df_index['blh']))
+                            mask = (df_index['q_diff'] > params['q_diff_e']) & (df_index['z'] < (df_index['BLH_factor'] * df_index['blh']))
                             df_index['f0'] = np.where(mask, df_index['q_diff'] / df_index['q'], 0)
                             
-                            # Delete the "BLH_factor" column
                             if 'BLH_factor' in df_index.columns:
                                 df_index = df_index.drop(columns=['BLH_factor'])
+                                
                         except Exception as e:
-                            print(f"!!! Error in DF method processing: {e}")
-                            # Use the default method
-                            mask = (df_index['q_diff'] > self.default_q_diff_e) & (df_index['z'] < (self.default_blh_factor * df_index['blh']))
-                            df_index['f0'] = np.where(mask, df_index['q_diff'] / df_index['q'], 0)
+                            print(f"! Error in DF BLH_factor processing: {e}")
+
                     else:
-                        # Use WaterSip
-                        mask = (df_index['q_diff'] > self.q_diff_e) & (df_index['z'] < (self.blh_factor * df_index['blh']))
+                        mask = (df_index['q_diff'] > params['q_diff_e']) & (df_index['z'] < (params['blh_factor'] * df_index['blh']))
                         df_index['f0'] = np.where(mask, df_index['q_diff'] / df_index['q'], 0)
                     
-                    # # Delete unnecessary columns
-                    # drop_cols = ['z', 'blh', 'q_diff', 'q']
-                    # df_index = df_index.drop(columns=[col for col in drop_cols if col in df_index.columns])
-                    
-                    # Calculate the f-value (using vectorized operations)
                     df_index['f'] = df_index['f0'].copy()
-                    # if len(df_index) > 1:
-                    #     shifted_f0 = df_index['f0'].shift(1)
-                    #     mask = ~pd.isna(shifted_f0)
-                    #     df_index.loc[mask, 'f'] = df_index.loc[mask, 'f'] * (1 - shifted_f0[mask])
                     for l in range(2, len(df_index)):
                         df_index.iloc[l:, df_index.columns.get_loc('f')] = df_index['f'].iloc[l:] * (1 - df_index['f0'].iloc[l - 1])
                                                
-                    # Delete the "f0" column
-                    if 'f0' in df_index.columns:
-                        df_index = df_index.drop(columns=['f0'])
+                    df_index = df_index.drop(columns=['f0'])
                     
-                    # Store the results
                     df0[global_idx] = df_index
                 except Exception as e:
-                    print(f"!!! Particle Processing {index} Failure: {e}")
-                    # Using an empty DataFrame
-                    df0[global_idx] = pd.DataFrame()
+                    print(f"! Particle tracking {index} Failure: {e}")
             
-            # Display progress
-            print(f"Build tracking table for {times} {batch_end}/{len(indexs)}")
+            print(f"Build tracking table for {times} {batch_end}/{len(particle_indices)}")
         
-        # Save the result
-        output_path = os.path.join(self.temporary_file_path,
-                                   f"{times}-{self.time_span}_P_particle_tracking_table.pkl" )
+        output_path = os.path.join(config.TEMPORARY_FILE_PATH,
+                                   f"{times}-{config.TIME_SPAN}_P_particle_tracking_table.pkl")
         writepkl(output_path, df0)
         
-        # Cache the result
-        self.tracking_results_cache[cache_key] = df0
-        
-        # Clear Memory
         del result
         gc.collect()
         
-        print(f"\nTracking table for {times} has been established, with total duration: {time.time() - track_start:.2f} seconds")
+        print(f"Tracking table for {times} has been established")
         return df0
+    #%% ==========================================================================
+    
+    for i in range(1, len(files_list)):
+        try:
+            get_and_track_particles(files_list[i], files_list[i - 1], df_method, i)
+        except Exception as e:
+            print(f'! get_and_track_particles generated an exception: {e}')
+
+    end_time = time.time()
+    execution_time = end_time - begin_time
+    print(f"Step 3 done, total {execution_time} seconds")
+
 
 if __name__ == "__main__":
-    ft = FilteringAndTracking('WaterSip-DF-HAMSTER')
-    ft.filtering_and_tracking('on')
+    filtering_and_tracking('WaterSip-DF-HAMSTER', 'on') 
