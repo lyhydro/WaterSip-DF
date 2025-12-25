@@ -67,7 +67,7 @@ def dynamic_rh_thresholds_calculation(method):
         df['lon_round'] = calculate_coordinate_round(df['lon'], config.OUTPUT_SPATIAL_RESOLUTION)
         df = df.drop(columns=['lon', 'lat'])
         
-        RH_span = np.arange(0, 120, 0.25)
+        RH_span = np.arange(0, 100, 1)
         p_simulation = np.zeros([len(RH_span), len(latitude), len(longitude)])
         
         for j in range(0, len(RH_span)):
@@ -84,7 +84,7 @@ def dynamic_rh_thresholds_calculation(method):
         min_indices = np.nanargmin(np.abs(p_simulation - obs0), axis=0)
         
         DF_RH_thresholds = np.where(np.all(p_simulation == 0, axis=0), np.nan, RH_span[min_indices])
-        DF_RH_thresholds[obs0 == 0] = 120 
+        DF_RH_thresholds[obs0 == 0] = 100 
         
         with file_write_lock:
             write_to_nc_2d(DF_RH_thresholds, 'DF_RH_thresholds',
