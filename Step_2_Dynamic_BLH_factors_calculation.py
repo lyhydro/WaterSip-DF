@@ -67,12 +67,7 @@ def dynamic_blh_factors_calculation(method):
         df['lon_round'] = calculate_coordinate_round(df['lon'], config.OUTPUT_SPATIAL_RESOLUTION)
         df = df.drop(columns=['lon', 'lat'])
         
-        # test the dynamic BLH_factors
-        # BLH_factors_span = np.concatenate([np.arange(0, 5, 0.05), 
-        #                                    np.arange(5, 10, 0.5), 
-        #                                    np.arange(10, 100, 10), 
-        #                                    np.arange(100, 1000, 100), 
-        #                                    np.arange(1000, 10001, 1000)])        
+        # test the dynamic BLH_factors  
         BLH_factors_span = np.concatenate([np.arange(0, 3, 0.05), 
                                            np.arange(3, 6, 0.1), 
                                            np.arange(6, 10, 0.25)] )
