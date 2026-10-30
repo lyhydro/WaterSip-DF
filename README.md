@@ -1,4 +1,4 @@
-> **Update:** We recommend using the updated [WaterSip-DF-TTMC](https://github.com/lyhydro/WaterSip-DF-TTMC). It replaces the HAMSTER bias correction with TTMC (Total Tracked Moisture Correction), which requires no evaporation simulation, and runs faster than WaterSip-DF-HAMSTER.
+> **Update: We recommend using the updated [WaterSip-DF-TTMC](https://github.com/lyhydro/WaterSip-DF-TTMC). It includes a series of refinements and updates, replaces HAMSTER with TTMC (Total Tracked Moisture Correction), and, most importantly, runs much faster than WaterSip-DF-HAMSTER.**
 
 This is the Python project that can be used to implement the WaterSip (Sodemann et al., 2008), WaterSip-HAMSTER (Keune et al., 2022), WaterSip-DF, and WaterSip-DF-HAMSTER methods. For detailed information on the DF methods, please refer to "Dynamic Filtering in Lagrangian Model-Based Moisture Source-Receptor Diagnosis" (https://doi.org/10.1029/2026JD047402). 
 
